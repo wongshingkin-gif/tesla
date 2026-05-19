@@ -1,0 +1,21 @@
+{
+  "name": "Tesla Charging Hub",
+  "short_name": "Tesla Hub",
+  "description": "Tesla 充電紀錄與效能分析工具",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#111111",
+  "theme_color": "#e82127",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
