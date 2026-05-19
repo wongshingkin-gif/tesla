@@ -100,13 +100,13 @@
 
 <div id="loading">
     <div class="spinner"></div>
-    <p style="margin-top: 15px;">同步雲端數據...</p>
+    <p style="margin-top: 15px;">數據高度同步中...</p>
 </div>
 
 <div class="container">
     <header>
         <h1>Tesla <span>Charge</span> Hub</h1>
-        <div id="syncStatus" style="font-size: 0.8rem; color: var(--success);">● 數據已即時同步</div>
+        <div id="syncStatus" style="font-size: 0.8rem; color: var(--success);">● 雲端雙向同步正常</div>
     </header>
 
     <div class="stats-grid">
@@ -146,8 +146,8 @@
 </div>
 
 <script>
-    // ⚠️ 請填入您重新部署後取得的最新 Web App URL
-    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbza8ZmCmS5Rg8nZNWUEADAxMOoi12ByrwgllV9qH6ewWJgmh4Qay1tD588-ZPB1-Hud/exec';
+    // ⚠️ 請在此處填入您重新部署後取得的最新 Web App URL
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwZuUPbWZoJ5DtTgTasynE_Q6ItS2I_RD-zgOl02XtT5HNgGGIPgBdaqsGIKQFpqptk/exec';
     
     let records = [];
     let effChartInstance = null;
@@ -158,6 +158,14 @@
         document.getElementById('loading').style.display = show ? 'flex' : 'none';
     }
 
+    function cleanFrontendNum(val) {
+        if (typeof val === 'number') return val;
+        if (!val) return 0;
+        let cleaned = String(val).replace(/[^0-9.-]/g, '');
+        let num = parseFloat(cleaned);
+        return isNaN(num) ? 0 : num;
+    }
+
     async function fetchRecords() {
         if (!WEB_APP_URL.startsWith('http')) return;
         showLoading(true);
@@ -165,14 +173,14 @@
             const response = await fetch(WEB_APP_URL);
             const data = await response.json();
             
-            // 將所有欄位轉為純數字，過濾任何導致運算崩潰的無效數據
+            // 🔥 前端第二道防禦去汙：雙重濾除雜質，確保絕對不會發生 NaN
             records = data.map(r => ({
                 id: String(r.id),
-                date: r.date,
-                odometer: parseFloat(r.odometer) || 0,
-                kwh: parseFloat(r.kwh) || 0,
-                percent: parseFloat(r.percent) || 0,
-                cost: parseFloat(r.cost) || 0
+                date: r.date ? String(r.date).trim() : "",
+                odometer: cleanFrontendNum(r.odometer),
+                kwh: cleanFrontendNum(r.kwh),
+                percent: cleanFrontendNum(r.percent),
+                cost: cleanFrontendNum(r.cost)
             })).filter(r => r.odometer > 0);
                
             updateDashboard();
@@ -212,41 +220,41 @@
         const tbody = document.getElementById('tableBody'); 
         tbody.innerHTML = '';
         
-        // 1. 核心升級：依里程從小到大（時間舊到新）嚴格排序
+        // 依里程從小到大排序（舊到新）
         records.sort((a, b) => a.odometer - b.odometer);
 
         let totalKwhForEff = 0;
         let totalCostForEff = 0;
 
-        // 2. 核心計算引擎：循序鏈條式計算區間能耗
+        // 核心鏈條式計算引擎
         for (let i = 0; i < records.length; i++) {
             let r = records[i];
             if (i > 0) {
                 let prev = records[i - 1];
-                r.dist = r.odometer - prev.odometer; // 計算這一次與上一次差了多少公里
+                r.dist = r.odometer - prev.odometer; 
                 if (r.dist > 0) {
-                    r.kwhKm = r.kwh / r.dist;  // 當期充電量 / 行駛里程
-                    r.costKm = r.cost / r.dist; // 當期費用 / 行駛里程
+                    r.kwhKm = r.kwh / r.dist;  
+                    r.costKm = r.cost / r.dist; 
                     totalKwhForEff += r.kwh;
                     totalCostForEff += r.cost;
                 } else {
                     r.dist = 0; r.kwhKm = 0; r.costKm = 0;
                 }
             } else {
-                r.dist = 0; r.kwhKm = 0; r.costKm = 0; // 第一筆作為基準線，無區間數據
+                r.dist = 0; r.kwhKm = 0; r.costKm = 0; 
             }
         }
 
-        // 3. 計算總行駛里程
+        // 計算總里程
         let totalDistance = 0;
         if (records.length > 1) {
             totalDistance = records[records.length - 1].odometer - records[0].odometer;
         }
 
-        // 4. 總充電支出（無條件加總全域所有開銷）
+        // 🔥 總充電支出修正：不管有幾筆資料，一律無條件即時加總
         let totalSpend = records.reduce((sum, r) => sum + r.cost, 0);
 
-        // 5. 渲染表格（反轉陣列，確保最新數據列在網頁最上方）
+        // 渲染表格（最新數據排在最上面）
         const displayRecords = [...records].reverse();
         displayRecords.forEach((r) => {
             tbody.innerHTML += `<tr>
@@ -261,11 +269,11 @@
             </tr>`;
         });
 
-        // 6. 渲染上方四大數據卡片（具備防呆機制）
+        // 渲染上方四大數據卡片
         document.getElementById('totalDist').innerText = totalDistance.toLocaleString() + " km";
         document.getElementById('totalSpend').innerText = "$" + totalSpend.toLocaleString(undefined, {maximumFractionDigits:1});
 
-        // 💡 體驗優化：如果系統中只有一筆紀錄，提示使用者繼續輸入
+        // 💡 數學邏輯防呆：耗能必須有「里程差」，因此需要至少 2 筆數據
         if (records.length <= 1) {
             document.getElementById('avgEff').innerHTML = `<span style="font-size:0.75rem;color:var(--text-secondary);">需至少2筆數據</span>`;
             document.getElementById('avgCost').innerHTML = `<span style="font-size:0.75rem;color:var(--text-secondary);">需至少2筆數據</span>`;
@@ -280,7 +288,7 @@
         document.getElementById('avgEff').innerHTML = finalEff + " <small>kWh/km</small>";
         document.getElementById('avgCost').innerText = "$" + finalCost;
 
-        // 7. 生成歷史折線圖趨勢
+        // 生成歷史折線圖
         let chartLabels = [];
         let chartData = [];
         records.forEach(r => {
@@ -302,7 +310,6 @@
         });
     }
 
-    // PWA Service Worker 註冊機制
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
