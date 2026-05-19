@@ -12,7 +12,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* 樣式與上一版完全相同，保留原有美化介面 */
         :root {
             --tesla-red: #e82127;
             --bg-dark: #111111;
@@ -43,7 +42,7 @@
         header h1 span { color: var(--tesla-red); }
 
         .stats-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 15px; margin-bottom: 30px;
         }
         .stat-card {
@@ -52,7 +51,7 @@
         }
         .stat-card i { color: var(--tesla-red); margin-bottom: 10px; font-size: 1.2rem; }
         .stat-card h3 { font-size: 0.8rem; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 5px; }
-        .stat-card p { font-size: 1.3rem; font-weight: bold; }
+        .stat-card p { font-size: 1.4rem; font-weight: bold; }
 
         .main-grid { display: grid; grid-template-columns: 350px 1fr; gap: 25px; }
 
@@ -107,14 +106,14 @@
 <div class="container">
     <header>
         <h1>Tesla <span>Charge</span> Hub</h1>
-        <div id="syncStatus" style="font-size: 0.8rem; color: var(--success);">● 已連線</div>
+        <div id="syncStatus" style="font-size: 0.8rem; color: var(--success);">● 數據已完全同步</div>
     </header>
 
     <div class="stats-grid">
         <div class="stat-card"><i class="fa-solid fa-road"></i><h3>總行駛里程</h3><p id="totalDist">0 km</p></div>
-        <div class="stat-card"><i class="fa-solid fa-bolt"></i><h3>平均耗能</h3><p id="avgEff">0 <small>kWh/km</small></p></div>
-        <div class="stat-card"><i class="fa-solid fa-hand-holding-dollar"></i><h3>總支出</h3><p id="totalSpend">$0</p></div>
-        <div class="stat-card"><i class="fa-solid fa-coins"></i><h3>每公里成本</h3><p id="avgCost">$0</p></div>
+        <div class="stat-card"><i class="fa-solid fa-bolt"></i><h3>平均耗能</h3><p id="avgEff">0.000 <small>kWh/km</small></p></div>
+        <div class="stat-card"><i class="fa-solid fa-hand-holding-dollar"></i><h3>總充電支出</h3><p id="totalSpend">$0</p></div>
+        <div class="stat-card"><i class="fa-solid fa-coins"></i><h3>每公里成本</h3><p id="avgCost">$0.00</p></div>
     </div>
 
     <div class="main-grid">
@@ -130,11 +129,11 @@
                     <button type="submit">確認儲存</button>
                 </form>
             </div>
-            <div class="card"><div class="card-title"><i class="fa-solid fa-chart-line"></i> 耗能趨勢</div><canvas id="effChart"></canvas></div>
+            <div class="card"><div class="card-title"><i class="fa-solid fa-chart-line"></i> 耗能趨勢趨勢</div><canvas id="effChart"></canvas></div>
         </div>
         <div class="right-col">
             <div class="card" style="min-height: 600px;">
-                <div class="card-title"><i class="fa-solid fa-history"></i> 歷史紀錄</div>
+                <div class="card-title"><i class="fa-solid fa-history"></i> 歷史紀錄明細</div>
                 <div class="table-container">
                     <table>
                         <thead><tr><th>日期</th><th>總里程</th><th>區間里程</th><th>電量</th><th>費用</th><th>kWh/km</th><th>$/km</th><th>操作</th></tr></thead>
@@ -147,8 +146,8 @@
 </div>
 
 <script>
-    // ⚠️ 貼上您的 Web App URL
-    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbyYbCGQYZm-V8CIj8chl0TMm6LfIDmpFCV1c4CzkpVBO3UJpfR6swnvDqROhb7OSV9o/exec';
+    // ⚠️ 請在此處貼上您從新 Google 帳號部署取得的網頁應用程式網址 (Web App URL)
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbz0yDGROFejv7Me37zolVjPB1C3tf9m11VRc7YevP1sjx-N0ZiLsRYyKTC4wnxv9zoM/exec';
     
     let records = [];
     let effChartInstance = null;
@@ -165,12 +164,16 @@
         try {
             const response = await fetch(WEB_APP_URL);
             const data = await response.json();
+            
+            // 安全防禦解析：將字串轉為數字，並過濾掉試算表中的空行與殘留錯誤
             records = data.map(r => ({
                 id: Number(r.ID), date: r.Date, odometer: Number(r.Odometer),
                 kwh: Number(r.kWh), percent: Number(r.Percent), cost: Number(r.Cost)
-            })).sort((a, b) => a.odometer - b.odometer);
+            })).filter(r => !isNaN(r.odometer) && r.odometer > 0)
+               .sort((a, b) => a.odometer - b.odometer);
+               
             updateDashboard();
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error("讀取失敗:", e); }
         showLoading(false);
     }
 
@@ -184,10 +187,7 @@
                 body: JSON.stringify(payload)
             });
             setTimeout(fetchRecords, 1500);
-        } catch (e) {
-            console.error(e);
-            showLoading(false);
-        }
+        } catch (e) { console.error("發送失敗:", e); showLoading(false); }
     }
 
     document.getElementById('chargeForm').addEventListener('submit', function(e) {
@@ -203,30 +203,66 @@
         this.reset(); document.getElementById('date').valueAsDate = new Date();
     });
 
-    function deleteRecord(id) { if(confirm('確定要刪除？')) sendData({ action: 'delete', id: id }); }
+    function deleteRecord(id) { if(confirm('確定要刪除此筆雲端紀錄？')) sendData({ action: 'delete', id: id }); }
 
     function updateDashboard() {
         const tbody = document.getElementById('tableBody'); tbody.innerHTML = '';
-        let totalDistance = 0, totalKwh = 0, totalCost = 0, chartLabels = [], chartData = [];
+        let totalDistance = 0, totalSpend = 0, totalKwhForEff = 0, totalCostForEff = 0;
+        let chartLabels = [], chartData = [];
 
         if (records.length > 0) {
-            totalDistance = records[records.length-1].odometer - records[0].odometer;
-            [...records].reverse().forEach((record) => {
-                const prev = records[records.findIndex(r => r.id === record.id) - 1] || null;
+            // 修正：總充電支出必須涵蓋所有紀錄，使用全域精準加總
+            totalSpend = records.reduce((sum, r) => sum + r.cost, 0);
+            
+            // 總行駛里程 = 最後一筆里程 - 第一筆里程
+            if (records.length > 1) {
+                totalDistance = records[records.length-1].odometer - records[0].odometer;
+            }
+
+            // 反轉矩陣以在畫面上「最新日期顯示在最上方」
+            const reversed = [...records].reverse();
+            reversed.forEach((record) => {
+                const originalIdx = records.findIndex(r => r.id === record.id);
+                const prev = originalIdx > 0 ? records[originalIdx - 1] : null;
+                
                 let dist = 0, kwhKm = 0, costKm = 0;
                 if(prev) {
                     dist = record.odometer - prev.odometer;
-                    kwhKm = record.kwh / dist; costKm = record.cost / dist;
-                    totalKwh += record.kwh; totalCost += record.cost;
-                    chartLabels.unshift(record.date); chartData.unshift(kwhKm.toFixed(3));
+                    if (dist > 0) {
+                        kwhKm = record.kwh / dist; 
+                        costKm = record.cost / dist;
+                        
+                        // 累積區間耗能與區間花費，用來推算真實的平均消耗
+                        totalKwhForEff += record.kwh; 
+                        totalCostForEff += record.cost;
+                        
+                        chartLabels.unshift(record.date); 
+                        chartData.unshift(kwhKm.toFixed(3));
+                    }
                 }
-                tbody.innerHTML += `<tr><td>${record.date}</td><td>${record.odometer}</td><td class="red-text">${dist || '-'}</td><td>${record.kwh}</td><td>$${record.cost}</td><td>${kwhKm ? kwhKm.toFixed(3) : '-'}</td><td>${costKm ? '$' + costKm.toFixed(2) : '-'}</td><td><button class="delete-btn" onclick="deleteRecord(${record.id})">刪除</button></td></tr>`;
+                tbody.innerHTML += `<tr>
+                    <td>${record.date}</td>
+                    <td>${record.odometer.toLocaleString()} km</td>
+                    <td class="red-text">${dist > 0 ? dist.toLocaleString() + ' km' : '-'}</td>
+                    <td>${record.kwh} kWh</td>
+                    <td>$${record.cost.toLocaleString()}</td>
+                    <td>${kwhKm > 0 ? kwhKm.toFixed(3) : '-'}</td>
+                    <td>${costKm > 0 ? '$' + costKm.toFixed(2) : '-'}</td>
+                    <td><button class="delete-btn" onclick="deleteRecord(${record.id})">刪除</button></td>
+                </tr>`;
             });
         }
-        document.getElementById('totalDist').innerText = totalDistance + " km";
-        document.getElementById('totalSpend').innerText = "$" + totalCost.toFixed(0);
-        document.getElementById('avgEff').innerHTML = (totalDistance > 0 ? (totalKwh/totalDistance).toFixed(3) : "0") + " <small>kWh/km</small>";
-        document.getElementById('avgCost').innerText = "$" + (totalDistance > 0 ? (totalCost/totalDistance).toFixed(2) : "0");
+        
+        // 更新上方統計卡片（加入防呆與千分位逗號）
+        document.getElementById('totalDist').innerText = totalDistance.toLocaleString() + " km";
+        document.getElementById('totalSpend').innerText = "$" + totalSpend.toLocaleString(undefined, {maximumFractionDigits:1});
+        
+        const finalEff = (totalDistance > 0) ? (totalKwhForEff / totalDistance).toFixed(3) : "0.000";
+        const finalCost = (totalDistance > 0) ? (totalCostForEff / totalDistance).toFixed(2) : "0.00";
+        
+        document.getElementById('avgEff').innerHTML = finalEff + " <small>kWh/km</small>";
+        document.getElementById('avgCost').innerText = "$" + finalCost;
+        
         initChart(chartLabels, chartData);
     }
 
@@ -234,17 +270,17 @@
         if (effChartInstance) effChartInstance.destroy();
         effChartInstance = new Chart(document.getElementById('effChart').getContext('2d'), {
             type: 'line',
-            data: { labels: labels, datasets: [{ label: '耗能', data: data, borderColor: '#e82127', backgroundColor: 'rgba(232,33,39,0.1)', fill: true, tension: 0.4 }] },
+            data: { labels: labels, datasets: [{ label: '耗能效率', data: data, borderColor: '#e82127', backgroundColor: 'rgba(232,33,39,0.1)', fill: true, tension: 0.4 }] },
             options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { grid: { color: '#333' }, ticks: { color: '#aaa' } }, x: { grid: { display: false }, ticks: { color: '#aaa' } } } }
         });
     }
 
-    // 註冊 Service Worker (達成 PWA 的關鍵)
+    // PWA Service Worker 註冊機制
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('./sw.js')
-                .then(reg => console.log('Service Worker 註冊成功'))
-                .catch(err => console.log('Service Worker 註冊失敗', err));
+                .then(reg => console.log('PWA SW 註冊成功'))
+                .catch(err => console.log('PWA SW 註冊失敗', err));
         });
     }
 
