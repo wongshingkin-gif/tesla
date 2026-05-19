@@ -59,7 +59,8 @@
             background: var(--card-bg); border-radius: 20px; padding: 25px;
             border: 1px solid var(--border); margin-bottom: 25px;
         }
-        .card-title { font-size: 1.1rem; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+        .card-title { font-size: 1.1rem; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; color: #fff; }
+        .card-title i { color: var(--tesla-red); }
 
         .form-group { margin-bottom: 15px; }
         .form-group label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px; }
@@ -122,17 +123,37 @@
                 <div class="card-title"><i class="fa-solid fa-plus-circle"></i> 新增紀錄</div>
                 <form id="chargeForm">
                     <div class="form-group"><label>紀錄日期</label><input type="date" id="date" required></div>
-                    <div class="form-group"><label>當前總里程 (km)</label><input type="number" id="odometer" placeholder="例如: 12500" required></div>
-                    <div class="form-group"><label>充入電量 (kWh)</label><input type="number" id="kwh" step="0.1" placeholder="例如: 45.5" required></div>
-                    <div class="form-group"><label>增加百分比 (%)</label><input type="number" id="percent" placeholder="例如: 65" required></div>
-                    <div class="form-group"><label>充電費用 ($)</label><input type="number" id="cost" step="0.1" placeholder="例如: 120" required></div>
+                    <div class="form-group"><label>當前總里程 (km)</label><input type="number" id="odometer" placeholder="例如 全新車輸入: 0" required></div>
+                    <div class="form-group"><label>充入電量 (kWh)</label><input type="number" id="kwh" step="0.1" placeholder="例如 交車當天輸入: 0" required></div>
+                    <div class="form-group"><label>增加百分比 (%)</label><input type="number" id="percent" placeholder="例如 交車當天輸入: 0" required></div>
+                    <div class="form-group"><label>充電費用 ($)</label><input type="number" id="cost" step="0.1" placeholder="例如 交車當天輸入: 0" required></div>
                     <button type="submit">確認儲存</button>
                 </form>
             </div>
             <div class="card"><div class="card-title"><i class="fa-solid fa-chart-line"></i> 耗能效率趨勢</div><canvas id="effChart"></canvas></div>
         </div>
         <div class="right-col">
-            <div class="card" style="min-height: 600px;">
+            <div class="card">
+                <div class="card-title"><i class="fa-solid fa-calendar-days"></i> 🗂️ 月度數據摘要統計</div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>月份</th>
+                                <th>月度行駛里程</th>
+                                <th>月度總支出</th>
+                                <th>月度平均耗能</th>
+                                <th>每公里成本</th>
+                            </tr>
+                        </thead>
+                        <tbody id="monthlyTableBody">
+                            <tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">等待數據載入中...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="card" style="min-height: 400px;">
                 <div class="card-title"><i class="fa-solid fa-history"></i> 歷史紀錄明細</div>
                 <div class="table-container">
                     <table>
@@ -147,7 +168,7 @@
 
 <script>
     // ⚠️ 請在此處填入您重新部署後取得的最新 Web App URL
-    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwZuUPbWZoJ5DtTgTasynE_Q6ItS2I_RD-zgOl02XtT5HNgGGIPgBdaqsGIKQFpqptk/exec';
+    const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzyirzmzfWCoDtVBR5Jsf0Bxe6dVXI7AM8IXpZ-QhXW7ztipPDDoNYatfvfbRyX8Z5E/exec';
     
     let records = [];
     let effChartInstance = null;
@@ -160,7 +181,7 @@
 
     function cleanFrontendNum(val) {
         if (typeof val === 'number') return val;
-        if (!val) return 0;
+        if (!val && val !== 0) return 0;
         let cleaned = String(val).replace(/[^0-9.-]/g, '');
         let num = parseFloat(cleaned);
         return isNaN(num) ? 0 : num;
@@ -173,7 +194,7 @@
             const response = await fetch(WEB_APP_URL);
             const data = await response.json();
             
-            // 🔥 前端第二道防禦去汙：雙重濾除雜質，確保絕對不會發生 NaN
+            // 🔥 解放 0 公里限制：修改 filter 防禦機制，允許 odometer === 0 通過（全新車起步點）
             records = data.map(r => ({
                 id: String(r.id),
                 date: r.date ? String(r.date).trim() : "",
@@ -181,7 +202,7 @@
                 kwh: cleanFrontendNum(r.kwh),
                 percent: cleanFrontendNum(r.percent),
                 cost: cleanFrontendNum(r.cost)
-            })).filter(r => r.odometer > 0);
+            })).filter(r => r.date !== "" && r.id !== "");
                
             updateDashboard();
         } catch (e) { console.error("同步失敗:", e); }
@@ -218,17 +239,27 @@
 
     function updateDashboard() {
         const tbody = document.getElementById('tableBody'); 
+        const monthlyTbody = document.getElementById('monthlyTableBody');
         tbody.innerHTML = '';
+        monthlyTbody.innerHTML = '';
         
-        // 依里程從小到大排序（舊到新）
+        // 依里程從小到大排序（舊到新排列，以利鏈條式精算落差）
         records.sort((a, b) => a.odometer - b.odometer);
 
         let totalKwhForEff = 0;
         let totalCostForEff = 0;
+        let monthlyGroup = {}; // 用於統計每月數據
 
         // 核心鏈條式計算引擎
         for (let i = 0; i < records.length; i++) {
             let r = records[i];
+            
+            // 初始化月度物件格式
+            let monthKey = r.date ? r.date.substring(0, 7) : "未知月份";
+            if (r.date && !monthlyGroup[monthKey]) {
+                monthlyGroup[monthKey] = { dist: 0, kwh: 0, cost: 0 };
+            }
+
             if (i > 0) {
                 let prev = records[i - 1];
                 r.dist = r.odometer - prev.odometer; 
@@ -237,30 +268,43 @@
                     r.costKm = r.cost / r.dist; 
                     totalKwhForEff += r.kwh;
                     totalCostForEff += r.cost;
+                    
+                    // 歸納到對應的月份統計中
+                    if (monthlyGroup[monthKey]) {
+                        monthlyGroup[monthKey].dist += r.dist;
+                        monthlyGroup[monthKey].kwh += r.kwh;
+                    }
                 } else {
                     r.dist = 0; r.kwhKm = 0; r.costKm = 0;
                 }
             } else {
+                // 第一筆資料（例如全新車 0 公里錨定點）
                 r.dist = 0; r.kwhKm = 0; r.costKm = 0; 
+            }
+            
+            // 每月的充電費用無論如何都無條件計入當月總支出
+            if (monthlyGroup[monthKey]) {
+                monthlyGroup[monthKey].cost += r.cost;
             }
         }
 
-        // 計算總里程
+        // 計算全域生涯總里程 (最後一筆減去第一筆里程錨定點)
         let totalDistance = 0;
         if (records.length > 1) {
             totalDistance = records[records.length - 1].odometer - records[0].odometer;
         }
 
-        // 🔥 總充電支出修正：不管有幾筆資料，一律無條件即時加總
+        // 全球生涯總充電支出累加
         let totalSpend = records.reduce((sum, r) => sum + r.cost, 0);
 
-        // 渲染表格（最新數據排在最上面）
+        // 1. 渲染歷史明細明細（最新數據排在最上面）
         const displayRecords = [...records].reverse();
         displayRecords.forEach((r) => {
+            let distText = r.dist > 0 ? r.dist.toLocaleString() + ' km' : (r.odometer === 0 ? '交車錨定' : '-');
             tbody.innerHTML += `<tr>
                 <td>${r.date}</td>
                 <td>${r.odometer.toLocaleString()} km</td>
-                <td class="red-text">${r.dist > 0 ? r.dist.toLocaleString() + ' km' : '-'}</td>
+                <td class="red-text">${distText}</td>
                 <td>${r.kwh} kWh</td>
                 <td>$${r.cost.toLocaleString()}</td>
                 <td>${r.kwhKm > 0 ? r.kwhKm.toFixed(3) : '-'}</td>
@@ -269,14 +313,34 @@
             </tr>`;
         });
 
-        // 渲染上方四大數據卡片
+        // 2. 渲染全新追加的「月度數據摘要統計」表格 (依月份由新到舊排序)
+        let sortedMonths = Object.keys(monthlyGroup).sort((a, b) => b.localeCompare(a));
+        if (sortedMonths.length === 0) {
+            monthlyTbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);">暫無月度統計數據</td></tr>`;
+        } else {
+            sortedMonths.forEach(m => {
+                let mData = monthlyGroup[m];
+                let mAvgEff = mData.dist > 0 ? (mData.kwh / mData.dist).toFixed(3) + " <small>kWh/km</small>" : "-";
+                let mAvgCost = mData.dist > 0 ? "$" + (mData.cost / mData.dist).toFixed(2) : "-";
+                
+                monthlyTbody.innerHTML += `<tr>
+                    <td><strong>${m}</strong></td>
+                    <td>${mData.dist.toLocaleString()} km</td>
+                    <td class="red-text">$${mData.cost.toLocaleString(undefined, {maximumFractionDigits:1})}</td>
+                    <td>${mAvgEff}</td>
+                    <td>${mAvgCost}</td>
+                </tr>`;
+            });
+        }
+
+        // 3. 渲染上方四大生涯數據大字卡
         document.getElementById('totalDist').innerText = totalDistance.toLocaleString() + " km";
         document.getElementById('totalSpend').innerText = "$" + totalSpend.toLocaleString(undefined, {maximumFractionDigits:1});
 
-        // 💡 數學邏輯防呆：耗能必須有「里程差」，因此需要至少 2 筆數據
+        // 數學安全閥：如果只有 1 筆數據（即只有交車 0 公里紀錄），不執行除法
         if (records.length <= 1) {
-            document.getElementById('avgEff').innerHTML = `<span style="font-size:0.75rem;color:var(--text-secondary);">需至少2筆數據</span>`;
-            document.getElementById('avgCost').innerHTML = `<span style="font-size:0.75rem;color:var(--text-secondary);">需至少2筆數據</span>`;
+            document.getElementById('avgEff').innerHTML = `<span style="font-size:0.75rem;color:var(--text-secondary);">等待第2筆數據...</span>`;
+            document.getElementById('avgCost').innerHTML = `<span style="font-size:0.75rem;color:var(--text-secondary);">等待第2筆數據...</span>`;
             initChart([], []);
             return;
         }
@@ -288,7 +352,7 @@
         document.getElementById('avgEff').innerHTML = finalEff + " <small>kWh/km</small>";
         document.getElementById('avgCost').innerText = "$" + finalCost;
 
-        // 生成歷史折線圖
+        // 4. 生成歷史折線圖
         let chartLabels = [];
         let chartData = [];
         records.forEach(r => {
